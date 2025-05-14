@@ -1,0 +1,26 @@
+{
+  "type": "module",
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "chalks": "^0.1.5",
+    "ethers": "^6.14.0",
+    "fs": "^0.0.1-security"
+  },
+  "name": "0gswap",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/linndend/0gswap"
+  },
+  "author": "Rahmad",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/linndend/0gswap/issues"
+  },
+  "homepage": "https://github.com/linndend/0gswap#readme",
+  "description": ""
+}
