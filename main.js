@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { ogSwap } from './swap.js';
+import { ogSwap } from './utils/swap.js';
 
 const privateKeys = fs.readFileSync('./wallets.txt', 'utf-8')
   .split('\n')
