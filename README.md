@@ -25,7 +25,7 @@ npm install
 ```
 nano .env
 ```
-format one per line :
+format :
 ```
 PRIVATE_KEY=0x
 ```
