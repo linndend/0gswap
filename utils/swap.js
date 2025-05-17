@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { ethers } from "ethers";
 import fs from 'fs';
-const abi = JSON.parse(fs.readFileSync('./abi.json', 'utf-8'));
+const abi = JSON.parse(fs.readFileSync('./utils/abi.json', 'utf-8'));
 
 export class ogSwap {
   constructor(privkey, currentNum, total) {
