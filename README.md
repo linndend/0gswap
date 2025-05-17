@@ -21,14 +21,13 @@ cd 0gswap
 ```bash
 npm install
 ```
-3. Create a `wallets.txt` file in the root directory with your wallet private keys:
+3. Create a `.env` file in the root directory with your wallet private keys:
 ```
-nano wallets.txt
+nano .env
 ```
 format one per line :
 ```
-0x
-0x
+PRIVATE_KEY=0x
 ```
 ## 🚀 Usage
 
