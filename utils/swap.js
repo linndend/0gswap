@@ -1,8 +1,7 @@
 import chalk from "chalk";
 import { ethers } from "ethers";
 import fs from 'fs';
-
-const abi = JSON.parse(fs.readFileSync('./utils/abi.json', 'utf-8'));
+const abi = JSON.parse(fs.readFileSync('./abi.json', 'utf-8'));
 
 export class ogSwap {
   constructor(privkey, currentNum, total) {
@@ -26,41 +25,34 @@ export class ogSwap {
 
     this.currentNum = currentNum;
     this.total = total;
-    this.approvedTokens = {};
   }
 
   log(type, message) {
     const prefix = `[${new Date().toLocaleTimeString()}]`;
-    const color = {
-      success: chalk.green,
-      error: chalk.red,
-      info: chalk.blue,
-      warn: chalk.yellow,
-      process: chalk.cyan
-    }[type] || ((msg) => msg);
-    console.log(color(`${prefix} ${message}`));
+    switch (type) {
+      case "success": console.log(chalk.green(prefix, message)); break;
+      case "error": console.log(chalk.red(prefix, message)); break;
+      case "info": console.log(chalk.blue(prefix, message)); break;
+      case "warn": console.log(chalk.yellow(prefix, message)); break;
+      default: console.log(prefix, message); break;
+    }
   }
 
   async approveToken(tokenContract, spenderAddress, amount) {
-    const tokenAddress = await tokenContract.getAddress();
-    if (this.approvedTokens[tokenAddress]) {
-      this.log("info", `Token ${tokenAddress} already approved.`);
-      return true;
-    }
-
-    this.log("info", `Approving ${tokenAddress}...`);
+    this.log("info", `Trying approval...`);
     try {
       const nonce = await this.web3.getTransactionCount(this.wallet.address, "pending");
+      this.log("info", `Using nonce ${nonce} for approval`);
+
       const tx = await tokenContract.approve(spenderAddress, amount, {
         nonce,
-        gasLimit: 2_000_000,
+        gasLimit: 100_000,
         gasPrice: (await this.web3.getFeeData()).gasPrice,
       });
 
       await tx.wait();
-      this.log("success", `Approved. TX: ${tx.hash}`);
-      this.log("success", `Explorer: ${this.EXPLORER}${tx.hash}`);
-      this.approvedTokens[tokenAddress] = true;
+      this.log("success", `Approval TX Hash: ${tx.hash}`);
+      this.log("success", `Explorer URL: ${this.EXPLORER}${tx.hash}`);
       return tx.hash;
     } catch (err) {
       this.log("error", `Approval failed: ${err.message}`);
@@ -68,81 +60,75 @@ export class ogSwap {
     }
   }
 
-    delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-  async autoSwap(tokenA, tokenB, isReverse, decimalsA, decimalsB, labelA, labelB) {
+  async autoSwap(pair) {
     const count = 3;
     for (let i = 0; i < count; i++) {
-      const randomAmountA = parseFloat((Math.random() * (50 - 30) + 30).toFixed(2));
-      const randomAmountB = parseFloat((Math.random() * (0.02 - 0.002) + 0.002).toFixed(6));
-      const balanceA = await tokenA.balanceOf(this.wallet.address);
-      const balanceB = await tokenB.balanceOf(this.wallet.address);
+      const random = Math.random() < 0.5;
+      const direction = random ? `${pair[0]}->${pair[1]}` : `${pair[1]}->${pair[0]}`;
+
+      const amountUSDT = parseFloat((Math.random() * (100 - 50) + 50).toFixed(2));
+      const amountToken = parseFloat((Math.random() * (0.0005 - 0.0002) + 0.0002).toFixed(6));
+
+      const tokenIn = direction.includes("USDT") ? this.usdtContract : this[`${pair[1].toLowerCase()}Contract`];
+      const tokenOut = direction.includes("USDT") ? this[`${pair[1].toLowerCase()}Contract`] : this.usdtContract;
+
+      const decimalsIn = await tokenIn.decimals();
+      const decimalsOut = await tokenOut.decimals();
+
+      const balanceIn = await tokenIn.balanceOf(this.wallet.address);
+      const balanceOut = await tokenOut.balanceOf(this.wallet.address);
 
       this.log("info", `Balance Before Swap:`);
-      this.log("info", `${labelA}: ${ethers.formatUnits(balanceA, decimalsA)}`);
-      this.log("info", `${labelB}: ${ethers.formatUnits(balanceB, decimalsB)}`);
-      console.log(chalk.white("=".repeat(85)));
+      this.log("info", `${pair[0]}: ${ethers.formatUnits(balanceIn, decimalsIn)}`);
+      this.log("info", `${pair[1]}: ${ethers.formatUnits(balanceOut, decimalsOut)}`);
+      console.log(chalk.white("=".repeat(80)));
 
-      const isForward = Math.random() < 0.5;
-      const direction = isForward ? `${labelA}->${labelB}` : `${labelB}->${labelA}`;
-      const amount = isForward
-        ? ethers.parseUnits(randomAmountA.toString(), decimalsA)
-        : ethers.parseUnits(randomAmountB.toString(), decimalsB);
+      const amountIn = direction.includes("USDT")
+        ? ethers.parseUnits(amountUSDT.toString(), 18)
+        : ethers.parseUnits(amountToken.toString(), 120);
 
-      const tokenToApprove = isForward ? tokenA : tokenB;
-      const approveTx = await this.approveToken(tokenToApprove, this.swapaddress, amount);
+      const approveTx = await this.approveToken(tokenIn, this.swapaddress, amountIn);
       if (!approveTx) return;
 
-      this.log("success", `Approved ${isForward ? labelA : labelB}`);
+      this.log("success", `Approved ${direction.split("->")[0]}`);
 
       const deadline = Math.floor(Date.now() / 1000) + 300;
-      const swapNonce = await this.web3.getTransactionCount(this.wallet.address, "pending");
-
-      this.log("process", `Swapping ${direction} with nonce ${swapNonce}`);
-
-      const tokenIn = isForward ? await tokenA.getAddress() : await tokenB.getAddress();
-      const tokenOut = isForward ? await tokenB.getAddress() : await tokenA.getAddress();
+      const nonce = await this.web3.getTransactionCount(this.wallet.address, "pending");
 
       try {
         const swapTx = await this.swapContract.exactInputSingle({
-          tokenIn,
-          tokenOut,
+          tokenIn: direction.includes("USDT") ? this.usdtaddress : this[pair[1].toLowerCase() + 'address'],
+          tokenOut: direction.includes("USDT") ? this[pair[1].toLowerCase() + 'address'] : this.usdtaddress,
           fee: 3000,
           recipient: this.wallet.address,
           deadline,
-          amountIn: amount,
+          amountIn,
           amountOutMinimum: 0,
           sqrtPriceLimitX96: 0,
         }, {
-          nonce: swapNonce,
+          nonce,
           gasLimit: 1_000_000,
           gasPrice: (await this.web3.getFeeData()).gasPrice,
         });
 
         await swapTx.wait();
-        await this.delay(10000);
         this.log("success", `Swap ${direction} successful`);
-        this.log("success", `Amount: ${ethers.formatUnits(amount, isForward ? decimalsA : decimalsB)}`);
+        this.log("success", `Amount: ${ethers.formatUnits(amountIn, decimalsIn)} USDT`);
         this.log("success", `TX: ${swapTx.hash}`);
-        this.log("success", `URL: ${this.EXPLORER}${swapTx.hash}`);
-        console.log(chalk.white("~".repeat(85)));
+        this.log("success", `Explorer: ${this.EXPLORER}${swapTx.hash}`);
+        console.log(chalk.white("=".repeat(80)));
+
       } catch (err) {
         this.log("error", `Swap failed: ${err.message}`);
       }
     }
   }
 
-   async autoSwapBtcUsdt() {
-   const decimalsUSDT = await this.usdtContract.decimals();
-   const decimalsBTC = await this.btcContract.decimals(); 
-   await this.autoSwap(this.usdtContract, this.btcContract, false, decimalsUSDT, decimalsBTC, 'USDT', 'BTC');
+  async autoSwapBtcUsdt() {
+    return this.autoSwap(['USDT', 'BTC']);
   }
 
-   async autoSwapEthUsdt() {
-   const decimalsUSDT = await this.usdtContract.decimals();
-   const decimalsETH = await this.ethContract.decimals();  
-   await this.autoSwap(this.usdtContract, this.ethContract, false, decimalsUSDT, decimalsETH, 'USDT', 'ETH');
+  async autoSwapEthUsdt() {
+    return this.autoSwap(['USDT', 'ETH']);
   }
 }
